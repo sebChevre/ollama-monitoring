@@ -228,6 +228,14 @@
                 <h3>Sessions</h3>
                 <div class="stat-value"><span id="sessionCount">0</span></div>
             </div>
+            <div class="card stat-card">
+                <h3>Avg Execution Time</h3>
+                <div class="stat-value"><span id="avgDuration">0</span><span class="stat-unit">ms</span></div>
+            </div>
+            <div class="card stat-card">
+                <h3>Total Time</h3>
+                <div class="stat-value"><span id="totalDuration">0</span><span class="stat-unit">s</span></div>
+            </div>
         </div>
 
         <div class="charts">
@@ -246,6 +254,10 @@
                 <h3>📈 Token History (Last 50)</h3>
                 <canvas id="historyChart"></canvas>
             </div>
+            <div class="chart-container">
+                <h3>⏱️ Execution Time (Last 50)</h3>
+                <canvas id="durationChart"></canvas>
+            </div>
         </div>
 
         <div class="table-container">
@@ -257,12 +269,13 @@
                         <th>Input Tokens</th>
                         <th>Output Tokens</th>
                         <th>Total</th>
+                        <th>Duration</th>
                         <th>Timestamp</th>
                     </tr>
                 </thead>
                 <tbody id="historyTable">
                     <tr>
-                        <td colspan="5" style="text-align: center; color: #999;">Loading...</td>
+                        <td colspan="6" style="text-align: center; color: #999;">Loading...</td>
                     </tr>
                 </tbody>
             </table>
@@ -271,7 +284,7 @@
     </div>
 
     <script>
-        let distributionChart, modelsChart, historyChart;
+        let distributionChart, modelsChart, historyChart, durationChart;
 
         async function fetchStats() {
             try {
@@ -312,6 +325,10 @@
                 stats.totalInputTokens + stats.totalOutputTokens
             );
             document.getElementById('sessionCount').textContent = stats.sessions.length;
+            
+            // 📊 Display execution time metrics
+            document.getElementById('avgDuration').textContent = (stats.avgDuration || 0).toLocaleString();
+            document.getElementById('totalDuration').textContent = ((stats.totalDuration || 0) / 1000).toFixed(1);
 
             if (stats.lastUpdated) {
                 document.getElementById('lastUpdated').textContent = formatDate(stats.lastUpdated);
@@ -428,6 +445,55 @@
                 });
             }
 
+            // Duration Chart
+            const durationLabels = history.map((_, i) => i + 1);
+            const durationData = history.map(h => h.duration || 0);
+
+            if (durationChart) {
+                durationChart.data.labels = durationLabels;
+                durationChart.data.datasets[0].data = durationData;
+                durationChart.update();
+            } else {
+                const ctx = document.getElementById('durationChart').getContext('2d');
+                durationChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: durationLabels,
+                        datasets: [{
+                            label: 'Execution Time (ms)',
+                            data: durationData,
+                            borderColor: '#ff6b6b',
+                            backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                            tension: 0.3,
+                            fill: true,
+                            borderWidth: 2,
+                            pointBackgroundColor: '#ff6b6b',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2,
+                            pointRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: true
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Duration (ms)'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
             const tableBody = document.getElementById('historyTable');
             tableBody.innerHTML = history.slice().reverse().slice(0, 10).map(session => `
                 <tr>
@@ -435,6 +501,7 @@
                     <td>${session.inputTokens.toLocaleString()}</td>
                     <td>${session.outputTokens.toLocaleString()}</td>
                     <td><strong>${(session.inputTokens + session.outputTokens).toLocaleString()}</strong></td>
+                    <td><strong>${(session.duration || 0).toLocaleString()}ms</strong></td>
                     <td>${formatDate(session.timestamp)}</td>
                 </tr>
             `).join('');

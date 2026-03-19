@@ -21,6 +21,8 @@ class TokenTracker {
     this.stats = {
       totalInputTokens: 0,
       totalOutputTokens: 0,
+      totalDuration: 0,
+      avgDuration: 0,
       sessions: [],
       lastUpdated: null,
       models: {}
@@ -44,27 +46,39 @@ class TokenTracker {
     fs.writeFileSync(statsFile, JSON.stringify(this.stats, null, 2));
   }
 
-  recordSession(model, inputTokens, outputTokens) {
+  recordSession(model, inputTokens, outputTokens, duration = 0) {
     this.stats.totalInputTokens += inputTokens;
     this.stats.totalOutputTokens += outputTokens;
+    this.stats.totalDuration += duration;
     this.stats.lastUpdated = new Date().toISOString();
+
+    // Calculate global average duration
+    const totalSessions = Object.values(this.stats.models).reduce((sum, m) => sum + m.count, 0) + 1;
+    this.stats.avgDuration = Math.round(this.stats.totalDuration / totalSessions);
 
     if (!this.stats.models[model]) {
       this.stats.models[model] = {
         inputTokens: 0,
         outputTokens: 0,
-        count: 0
+        count: 0,
+        totalDuration: 0,
+        avgDuration: 0
       };
     }
 
     this.stats.models[model].inputTokens += inputTokens;
     this.stats.models[model].outputTokens += outputTokens;
     this.stats.models[model].count += 1;
+    this.stats.models[model].totalDuration += duration;
+    this.stats.models[model].avgDuration = Math.round(
+      this.stats.models[model].totalDuration / this.stats.models[model].count
+    );
 
     this.stats.sessions.push({
       model,
       inputTokens,
       outputTokens,
+      duration,  // 📊 Temps d'exécution en ms
       timestamp: new Date().toISOString()
     });
 
@@ -85,7 +99,9 @@ class TokenTracker {
       totalOutputTokens: 0,
       sessions: [],
       lastUpdated: null,
-      models: {}
+      models: {},
+      totalDuration: 0,
+      avgDuration: 0
     };
     this.saveStats();
   }
@@ -103,13 +119,13 @@ app.get('/api/models', async (req, res) => {
 });
 
 app.post('/api/record', (req, res) => {
-  const { model, inputTokens, outputTokens } = req.body;
+  const { model, inputTokens, outputTokens, duration } = req.body;
 
   if (!model || typeof inputTokens !== 'number' || typeof outputTokens !== 'number') {
     return res.status(400).json({ error: 'Invalid request' });
   }
 
-  tracker.recordSession(model, inputTokens, outputTokens);
+  tracker.recordSession(model, inputTokens, outputTokens, duration);
   res.json({ success: true, stats: tracker.getStats() });
 });
 
