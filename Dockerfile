@@ -3,15 +3,17 @@ FROM node:18-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install
 
 COPY server.js .
 COPY public ./public
 
 ENV PORT=3333
-ENV DATA_DIR=/data
-
-VOLUME ["/data"]
+ENV DB_HOST=postgres
+ENV DB_PORT=5432
+ENV DB_USER=ollama_user
+ENV DB_PASSWORD=ollama_password
+ENV DB_NAME=ollama_monitoring
 
 EXPOSE 3333
 

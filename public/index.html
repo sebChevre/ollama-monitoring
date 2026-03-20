@@ -209,6 +209,9 @@
         <div class="controls">
             <button onclick="refreshData()">🔄 Refresh Now</button>
             <button onclick="resetStats()" class="danger">🗑️ Reset Stats</button>
+            <select id="modelFilter" onchange="onModelFilterChange()" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; font-weight: 600; color: #667eea;">
+                <option value="">📊 All Models</option>
+            </select>
         </div>
 
         <div class="grid">
@@ -285,6 +288,7 @@
 
     <script>
         let distributionChart, modelsChart, historyChart, durationChart;
+        let selectedModel = '';  // Track selected model filter
 
         async function fetchStats() {
             try {
@@ -319,55 +323,89 @@
             const stats = await fetchStats();
             if (!stats) return;
 
-            document.getElementById('totalInput').textContent = formatNumber(stats.totalInputTokens);
-            document.getElementById('totalOutput').textContent = formatNumber(stats.totalOutputTokens);
+            // Populate model filter dropdown
+            populateModelFilter(Object.keys(stats.models || {}));
+
+            // Apply filter if a model is selected
+            let displayStats = stats;
+            if (selectedModel) {
+                displayStats = filterStatsByModel(stats, selectedModel);
+            }
+
+            document.getElementById('totalInput').textContent = formatNumber(displayStats.totalInputTokens);
+            document.getElementById('totalOutput').textContent = formatNumber(displayStats.totalOutputTokens);
             document.getElementById('totalTokens').textContent = formatNumber(
-                stats.totalInputTokens + stats.totalOutputTokens
+                displayStats.totalInputTokens + displayStats.totalOutputTokens
             );
-            document.getElementById('sessionCount').textContent = stats.sessions.length;
+            document.getElementById('sessionCount').textContent = displayStats.sessions.length;
             
             // 📊 Display execution time metrics
-            document.getElementById('avgDuration').textContent = (stats.avgDuration || 0).toLocaleString();
-            document.getElementById('totalDuration').textContent = ((stats.totalDuration || 0) / 1000).toFixed(1);
+            document.getElementById('avgDuration').textContent = (displayStats.avgDuration || 0).toLocaleString();
+            document.getElementById('totalDuration').textContent = ((displayStats.totalDuration || 0) / 1000).toFixed(1);
 
-            if (stats.lastUpdated) {
-                document.getElementById('lastUpdated').textContent = formatDate(stats.lastUpdated);
+            if (displayStats.lastUpdated) {
+                document.getElementById('lastUpdated').textContent = formatDate(displayStats.lastUpdated);
             }
 
-            const totalInput = stats.totalInputTokens;
-            const totalOutput = stats.totalOutputTokens;
+            updateCharts(displayStats);
+            updateHistoryTable(displayStats.sessions);
+        }
 
-            if (distributionChart) {
-                distributionChart.data.datasets[0].data = [totalInput, totalOutput];
-                distributionChart.update();
-            } else {
-                const ctx = document.getElementById('distributionChart').getContext('2d');
-                distributionChart = new Chart(ctx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['Input', 'Output'],
-                        datasets: [{
-                            data: [totalInput, totalOutput],
-                            backgroundColor: ['#667eea', '#764ba2'],
-                            borderColor: 'white',
-                            borderWidth: 3
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        plugins: {
-                            legend: {
-                                position: 'bottom'
-                            }
-                        }
-                    }
-                });
-            }
+        function populateModelFilter(models) {
+            const select = document.getElementById('modelFilter');
+            const currentValue = select.value;
+            
+            // Keep only the "All Models" option and add model options
+            select.innerHTML = '<option value="">📊 All Models</option>';
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                select.appendChild(option);
+            });
+            
+            // Restore the previously selected value
+            select.value = currentValue;
+        }
 
-            const models = Object.entries(stats.models)
-                .sort((a, b) => (b[1].inputTokens + b[1].outputTokens) - (a[1].inputTokens + a[1].outputTokens))
-                .slice(0, 8);
+        function filterStatsByModel(stats, modelName) {
+            if (!modelName) return stats;
+            
+            const filteredSessions = stats.sessions.filter(s => s.model === modelName);
+            const modelData = stats.models[modelName] || {};
+            
+            return {
+                totalInputTokens: modelData.inputTokens || 0,
+                totalOutputTokens: modelData.outputTokens || 0,
+                totalDuration: modelData.totalDuration || 0,
+                avgDuration: modelData.avgDuration || 0,
+                sessions: filteredSessions,
+                lastUpdated: stats.lastUpdated,
+                models: { [modelName]: modelData }  // Only show selected model
+            };
+        }
+
+        function onModelFilterChange() {
+            selectedModel = document.getElementById('modelFilter').value;
+            updateDashboard();
+        }
+
+        function updateHistoryTable(sessions) {
+            const tableBody = document.getElementById('historyTable');
+            tableBody.innerHTML = sessions.slice().reverse().slice(0, 10).map(session => `
+                <tr>
+                    <td><span class="model-badge">${session.model}</span></td>
+                    <td>${session.inputTokens.toLocaleString()}</td>
+                    <td>${session.outputTokens.toLocaleString()}</td>
+                    <td><strong>${(session.inputTokens + session.outputTokens).toLocaleString()}</strong></td>
+                    <td><strong>${(session.duration || 0).toLocaleString()}ms</strong></td>
+                    <td>${formatDate(session.timestamp)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function updateCharts(stats) {
+            const models = Object.entries(stats.models || {});
 
             if (modelsChart) {
                 modelsChart.data.labels = models.map(m => m[0]);
@@ -404,7 +442,7 @@
                 });
             }
 
-            const history = await fetchHistory(50);
+            const history = stats.sessions || [];
             const historyLabels = history.map((_, i) => i + 1);
             const historyData = history.map(h => h.inputTokens + h.outputTokens);
 
@@ -524,10 +562,10 @@
         }
 
         // Auto-refresh every 10 seconds
-        setInterval(updateDashboard, 10000);
-
-        // Initial load
-        updateDashboard();
+        document.addEventListener('DOMContentLoaded', async () => {
+            await updateDashboard();
+            setInterval(updateDashboard, 10000);
+        });
     </script>
 </body>
 </html>
