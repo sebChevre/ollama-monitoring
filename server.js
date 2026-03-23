@@ -32,14 +32,28 @@ class PostgresTracker {
         CREATE TABLE IF NOT EXISTS sessions (
           id SERIAL PRIMARY KEY,
           model VARCHAR(255) NOT NULL,
+          client VARCHAR(100) DEFAULT 'unknown',
+          provider VARCHAR(100) DEFAULT 'unknown',
           input_tokens INTEGER NOT NULL,
           output_tokens INTEGER NOT NULL,
           duration INTEGER DEFAULT 0,
+          input_text TEXT,
+          output_text TEXT,
           timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         
         CREATE INDEX IF NOT EXISTS idx_sessions_model ON sessions(model);
         CREATE INDEX IF NOT EXISTS idx_sessions_timestamp ON sessions(timestamp);
+      `)
+      
+      // Add columns if they don't exist (migration)
+      await this.pool.query(`
+        ALTER TABLE sessions 
+        ADD COLUMN IF NOT EXISTS client VARCHAR(100) DEFAULT 'unknown'
+      `);
+      await this.pool.query(`
+        ALTER TABLE sessions 
+        ADD COLUMN IF NOT EXISTS provider VARCHAR(100) DEFAULT 'unknown'
       `);
       
       console.log('✅ Database initialized - PostgreSQL only');
@@ -49,11 +63,11 @@ class PostgresTracker {
     }
   }
 
-  async recordSession(model, inputTokens, outputTokens, duration = 0) {
+  async recordSession(model, inputTokens, outputTokens, duration = 0, inputText = null, outputText = null, client = 'unknown', provider = 'unknown') {
     try {
       await this.pool.query(
-        'INSERT INTO sessions (model, input_tokens, output_tokens, duration) VALUES ($1, $2, $3, $4)',
-        [model, inputTokens, outputTokens, duration]
+        'INSERT INTO sessions (model, client, provider, input_tokens, output_tokens, duration, input_text, output_text) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [model, client, provider, inputTokens, outputTokens, duration, inputText, outputText]
       );
     } catch (error) {
       console.error('❌ Error recording session:', error);
@@ -67,9 +81,13 @@ class PostgresTracker {
       const sessionsResult = await this.pool.query('SELECT * FROM sessions ORDER BY timestamp DESC LIMIT 1000');
       const sessions = sessionsResult.rows.map(row => ({
         model: row.model,
+        client: row.client,
+        provider: row.provider || 'unknown',
         inputTokens: row.input_tokens,
         outputTokens: row.output_tokens,
         duration: row.duration,
+        inputText: row.input_text,
+        outputText: row.output_text,
         timestamp: row.timestamp.toISOString()
       }));
 
@@ -161,9 +179,13 @@ class PostgresTracker {
 
       return result.rows.map(row => ({
         model: row.model,
+        client: row.client,
+        provider: row.provider || 'unknown',
         inputTokens: row.input_tokens,
         outputTokens: row.output_tokens,
         duration: row.duration,
+        inputText: row.input_text,
+        outputText: row.output_text,
         timestamp: row.timestamp.toISOString()
       })).reverse();
     } catch (error) {
@@ -218,17 +240,20 @@ app.get('/api/models', async (req, res) => {
 });
 
 app.post('/api/record', async (req, res) => {
-  const { model, inputTokens, outputTokens, duration } = req.body;
+  const { model, client, provider, inputTokens, outputTokens, duration, inputText, outputText } = req.body;
+
+  console.log(`📝 Received record: model=${model}, client=${client}, provider=${provider}, input=${inputTokens}, output=${outputTokens}`);
 
   if (!model || typeof inputTokens !== 'number' || typeof outputTokens !== 'number') {
     return res.status(400).json({ error: 'Invalid request' });
   }
 
   try {
-    await tracker.recordSession(model, inputTokens, outputTokens, duration);
+    await tracker.recordSession(model, inputTokens, outputTokens, duration, inputText, outputText, client || 'unknown', provider || 'unknown');
     const stats = await tracker.getStats();
     res.json({ success: true, stats });
   } catch (error) {
+    console.error(`❌ Error recording session:`, error.message);
     res.status(500).json({ error: 'Failed to record session' });
   }
 });
