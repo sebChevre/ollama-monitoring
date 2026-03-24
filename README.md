@@ -15,9 +15,32 @@ Accès: **http://localhost:3333**
 
 ### Docker
 
+**Build simple:**
 ```bash
-docker build -t ollama-monitoring .
-docker run -p 3333:3333 -v $(pwd)/data:/data ollama-monitoring
+docker build -t sebchevre/ollama-monitoring:1.2.0 .
+docker run -p 3333:3333 \
+  -e PORT=3333 \
+  -e DB_HOST=postgres \
+  -e DB_PORT=5432 \
+  -e DB_USER=ollama_user \
+  -e DB_PASSWORD=ollama_password \
+  -e DB_NAME=ollama_monitoring \
+  sebchevre/ollama-monitoring:1.2.0
+```
+
+**Build multiplateforme et push sur Docker Hub:**
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t sebchevre/ollama-monitoring:1.2.0 \
+  -t sebchevre/ollama-monitoring:latest \
+  --push .
+```
+
+**Configuration requise pour buildx:**
+```bash
+# Créer un builder multiplateforme (une seule fois)
+docker buildx create --name mybuilder --use
+docker buildx ls
 ```
 
 ## 📝 Variables d'Environnement
@@ -25,7 +48,61 @@ docker run -p 3333:3333 -v $(pwd)/data:/data ollama-monitoring
 | Variable | Défaut | Description |
 |----------|--------|-------------|
 | `PORT` | 3333 | Port d'écoute |
-| `DATA_DIR` | ./data | Répertoire de persistance |
+| `DB_HOST` | postgres | Host PostgreSQL |
+| `DB_PORT` | 5432 | Port PostgreSQL |
+| `DB_USER` | ollama_user | User PostgreSQL |
+| `DB_PASSWORD` | ollama_password | Password PostgreSQL |
+| `DB_NAME` | ollama_monitoring | Nom de la base |
+
+## 🚀 Déploiement avec Docker Compose
+
+Voir le fichier `docker-compose.yml` dans le projet `openwebui-monitoring` pour un exemple complet avec tous les services:
+
+```bash
+cd /Users/seb/OLLAMA/openwebui-monitoring
+docker compose -f docker-compose.yml up -d
+```
+
+## 🛠️ Commandes Utiles
+
+### Build et Push
+
+```bash
+# Build simple (local)
+docker build -t sebchevre/ollama-monitoring:1.2.0 .
+
+# Build multiplateforme et push
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t sebchevre/ollama-monitoring:1.2.0 \
+  -t sebchevre/ollama-monitoring:latest \
+  --push .
+
+# Tagger une version
+docker tag sebchevre/ollama-monitoring:1.2.0 sebchevre/ollama-monitoring:latest
+docker push sebchevre/ollama-monitoring:latest
+```
+
+### Test Local
+
+```bash
+# Build et tester localement
+docker build -t sebchevre/ollama-monitoring:test .
+docker run -p 3333:3333 \
+  -e PORT=3333 \
+  sebchevre/ollama-monitoring:test
+
+# Accès
+curl http://localhost:3333/api/stats
+
+# Logs
+docker logs -f <container-id>
+```
+
+## 📚 Ressources
+
+- [Documentation Node.js](https://nodejs.org/)
+- [Documentation Docker](https://docs.docker.com/)
+- [Documentation Express](https://expressjs.com/)
 
 ## 🎨 Dashboard Features
 
