@@ -86,6 +86,7 @@ class PostgresTracker {
         inputTokens: row.input_tokens,
         outputTokens: row.output_tokens,
         duration: row.duration,
+        tokensPerSecond: row.duration > 0 ? parseFloat((row.output_tokens * 1000 / row.duration).toFixed(1)) : 0,
         inputText: row.input_text,
         outputText: row.output_text,
         timestamp: row.timestamp.toISOString()
@@ -99,7 +100,8 @@ class PostgresTracker {
           SUM(output_tokens) as total_output,
           COUNT(*) as count,
           SUM(duration) as total_duration,
-          ROUND(AVG(duration)) as avg_duration
+          ROUND(AVG(duration)) as avg_duration,
+          ROUND(AVG(CASE WHEN duration > 0 THEN output_tokens * 1000.0 / duration ELSE 0 END)::numeric, 1) as avg_tokens_per_second
         FROM sessions
         GROUP BY model
       `);
@@ -115,7 +117,8 @@ class PostgresTracker {
           outputTokens: parseInt(row.total_output) || 0,
           count: parseInt(row.count) || 0,
           totalDuration: parseInt(row.total_duration) || 0,
-          avgDuration: parseInt(row.avg_duration) || 0
+          avgDuration: parseInt(row.avg_duration) || 0,
+          avgTokensPerSecond: parseFloat(row.avg_tokens_per_second) || 0
         };
         totalInputTokens += parseInt(row.total_input) || 0;
         totalOutputTokens += parseInt(row.total_output) || 0;
@@ -126,11 +129,18 @@ class PostgresTracker {
       const totalSessions = sessions.length;
       const avgDuration = totalSessions > 0 ? Math.round(totalDuration / totalSessions) : 0;
 
+      // Calculate global average tokens/s
+      const sessionsWithDuration = sessions.filter(s => s.duration > 0);
+      const avgTokensPerSecond = sessionsWithDuration.length > 0
+        ? parseFloat((sessionsWithDuration.reduce((sum, s) => sum + (s.outputTokens * 1000 / s.duration), 0) / sessionsWithDuration.length).toFixed(1))
+        : 0;
+
       return {
         totalInputTokens,
         totalOutputTokens,
         totalDuration,
         avgDuration,
+        avgTokensPerSecond,
         sessions: sessions.reverse(),  // Return in chronological order
         lastUpdated: new Date().toISOString(),
         models
@@ -184,6 +194,7 @@ class PostgresTracker {
         inputTokens: row.input_tokens,
         outputTokens: row.output_tokens,
         duration: row.duration,
+        tokensPerSecond: row.duration > 0 ? parseFloat((row.output_tokens * 1000 / row.duration).toFixed(1)) : 0,
         inputText: row.input_text,
         outputText: row.output_text,
         timestamp: row.timestamp.toISOString()
