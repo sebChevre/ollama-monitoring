@@ -505,6 +505,38 @@
         function updateCharts(stats) {
             const models = Object.entries(stats.models || {});
 
+            // Distribution Chart (Input vs Output)
+            const totalInput = stats.totalInputTokens || 0;
+            const totalOutput = stats.totalOutputTokens || 0;
+
+            if (distributionChart) {
+                distributionChart.data.datasets[0].data = [totalInput, totalOutput];
+                distributionChart.update();
+            } else {
+                const ctx = document.getElementById('distributionChart').getContext('2d');
+                distributionChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Input Tokens', 'Output Tokens'],
+                        datasets: [{
+                            data: [totalInput, totalOutput],
+                            backgroundColor: ['#667eea', '#764ba2'],
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
+                        }
+                    }
+                });
+            }
+
             if (modelsChart) {
                 modelsChart.data.labels = models.map(m => m[0]);
                 modelsChart.data.datasets[0].data = models.map(m => m[1].inputTokens + m[1].outputTokens);
