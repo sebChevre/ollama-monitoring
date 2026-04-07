@@ -239,6 +239,10 @@
                 <h3>Total Time</h3>
                 <div class="stat-value"><span id="totalDuration">0</span><span class="stat-unit">s</span></div>
             </div>
+            <div class="card stat-card">
+                <h3>Avg Tokens/s</h3>
+                <div class="stat-value"><span id="avgTokensPerSecond">0</span><span class="stat-unit">t/s</span></div>
+            </div>
         </div>
 
         <div class="charts">
@@ -263,6 +267,13 @@
             </div>
         </div>
 
+        <div class="charts">
+            <div class="chart-container">
+                <h3>⚡ Tokens/s (Last 50)</h3>
+                <canvas id="tokensPerSecondChart"></canvas>
+            </div>
+        </div>
+
         <div class="table-container">
             <h3 style="margin-bottom: 15px;">📋 Recent Sessions</h3>
             <table>
@@ -275,6 +286,7 @@
                         <th>Output Tokens</th>
                         <th>Total</th>
                         <th>Duration</th>
+                        <th>Tokens/s</th>
                         <th>Input Text</th>
                         <th>Output Text</th>
                         <th>Timestamp</th>
@@ -282,7 +294,7 @@
                 </thead>
                 <tbody id="historyTable">
                     <tr>
-                        <td colspan="10" style="text-align: center; color: #999;">Loading...</td>
+                        <td colspan="11" style="text-align: center; color: #999;">Loading...</td>
                     </tr>
                 </tbody>
             </table>
@@ -302,7 +314,7 @@
     </div>
 
     <script>
-        let distributionChart, modelsChart, historyChart, durationChart;
+        let distributionChart, modelsChart, historyChart, durationChart, tokensPerSecondChart;
         let selectedModel = '';  // Track selected model filter
 
         async function fetchStats() {
@@ -358,6 +370,9 @@
             document.getElementById('avgDuration').textContent = (displayStats.avgDuration || 0).toLocaleString();
             document.getElementById('totalDuration').textContent = ((displayStats.totalDuration || 0) / 1000).toFixed(1);
 
+            // ⚡ Display tokens/s metric
+            document.getElementById('avgTokensPerSecond').textContent = (displayStats.avgTokensPerSecond || 0).toLocaleString();
+
             if (displayStats.lastUpdated) {
                 document.getElementById('lastUpdated').textContent = formatDate(displayStats.lastUpdated);
             }
@@ -394,6 +409,7 @@
                 totalOutputTokens: modelData.outputTokens || 0,
                 totalDuration: modelData.totalDuration || 0,
                 avgDuration: modelData.avgDuration || 0,
+                avgTokensPerSecond: modelData.avgTokensPerSecond || 0,
                 sessions: filteredSessions,
                 lastUpdated: stats.lastUpdated,
                 models: { [modelName]: modelData }  // Only show selected model
@@ -416,6 +432,7 @@
                     <td>${session.outputTokens.toLocaleString()}</td>
                     <td><strong>${(session.inputTokens + session.outputTokens).toLocaleString()}</strong></td>
                     <td><strong>${(session.duration || 0).toLocaleString()}ms</strong></td>
+                    <td><strong>${(session.tokensPerSecond || 0)} t/s</strong></td>
                     <td>${session.inputText ? `<button class="view-input-btn" data-text-index="${idx}" style="background: #667eea; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">📋 View</button>` : '<span style="color: #999;">-</span>'}</td>
                     <td>${session.outputText ? `<button class="view-output-btn" data-text-index="${idx}" style="background: #4CAF50; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">✅ View</button>` : '<span style="color: #999;">-</span>'}</td>
                     <td>${formatDate(session.timestamp)}</td>
@@ -613,6 +630,55 @@
                 });
             }
 
+            // Tokens/s Chart
+            const tpsLabels = history.map((_, i) => i + 1);
+            const tpsData = history.map(h => h.tokensPerSecond || 0);
+
+            if (tokensPerSecondChart) {
+                tokensPerSecondChart.data.labels = tpsLabels;
+                tokensPerSecondChart.data.datasets[0].data = tpsData;
+                tokensPerSecondChart.update();
+            } else {
+                const ctx = document.getElementById('tokensPerSecondChart').getContext('2d');
+                tokensPerSecondChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: tpsLabels,
+                        datasets: [{
+                            label: 'Tokens/s',
+                            data: tpsData,
+                            borderColor: '#2ecc71',
+                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                            tension: 0.3,
+                            fill: true,
+                            borderWidth: 2,
+                            pointBackgroundColor: '#2ecc71',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2,
+                            pointRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: true
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Tokens/s'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
             const tableBody = document.getElementById('historyTable');
             tableBody.innerHTML = history.slice().reverse().slice(0, 10).map(session => `
                 <tr>
@@ -622,6 +688,7 @@
                     <td>${session.outputTokens.toLocaleString()}</td>
                     <td><strong>${(session.inputTokens + session.outputTokens).toLocaleString()}</strong></td>
                     <td><strong>${(session.duration || 0).toLocaleString()}ms</strong></td>
+                    <td><strong>${(session.tokensPerSecond || 0)} t/s</strong></td>
                     <td>${formatDate(session.timestamp)}</td>
                 </tr>
             `).join('');
